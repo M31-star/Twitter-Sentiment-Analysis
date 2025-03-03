@@ -47,6 +47,7 @@ def initialize_scraper():
     instances = [
         "https://nitter.privacydev.net",
         "https://nitter.fdn.fr",
+        "https://lightbrd.com/"
         "https://nitter.kavin.rocks"
     ]
     
