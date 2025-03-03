@@ -4,15 +4,16 @@ import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from nltk.corpus import stopwords
 import nltk
+import requests
 from ntscraper import Nitter
 
-# Download stopwords once
+# Download stopwords once, using Streamlit's caching
 @st.cache_resource
 def load_stopwords():
     nltk.download('stopwords')
     return stopwords.words('english')
 
-# Load model and vectorizer
+# Load model and vectorizer once
 @st.cache_resource
 def load_model_and_vectorizer():
     with open('model.pkl', 'rb') as model_file:
@@ -23,19 +24,26 @@ def load_model_and_vectorizer():
 
 # Define sentiment prediction function
 def predict_sentiment(text, model, vectorizer, stop_words):
+    # Preprocess text
     text = re.sub('[^a-zA-Z]', ' ', text)
-    text = text.lower().split()
+    text = text.lower()
+    text = text.split()
     text = [word for word in text if word not in stop_words]
-    text = [' '.join(text)]
+    text = ' '.join(text)
+    text = [text]
     text = vectorizer.transform(text)
+    
+    # Predict sentiment
     sentiment = model.predict(text)
     return "Negative" if sentiment == 0 else "Positive"
 
-# Initialize Nitter scraper with lightbrd.com
+# Initialize Nitter scraper
 @st.cache_resource
 def initialize_scraper():
     try:
-        return Nitter(instance="https://lightbrd.com", log_level=1)
+        scraper = Nitter()
+        scraper.instance = "https://lightbrd.com"  # Manually setting instance
+        return scraper
     except Exception as e:
         st.error(f"Error initializing scraper: {e}")
         return None
@@ -54,10 +62,13 @@ def create_card(tweet_text, sentiment):
 # Main app logic
 def main():
     st.title("Twitter Sentiment Analysis")
+
+    # Load stopwords, model, vectorizer, and scraper only once
     stop_words = load_stopwords()
     model, vectorizer = load_model_and_vectorizer()
     scraper = initialize_scraper()
 
+    # User input: either text input or Twitter username
     option = st.selectbox("Choose an option", ["Input text", "Get tweets from user"])
     
     if option == "Input text":
@@ -72,12 +83,15 @@ def main():
             if not scraper:
                 st.error("Scraper is not available. Please try again later.")
                 return
+            
             try:
                 tweets_data = scraper.get_tweets(username, mode='user', number=5)
                 if 'tweets' in tweets_data:
                     for tweet in tweets_data['tweets']:
                         tweet_text = tweet['text']
                         sentiment = predict_sentiment(tweet_text, model, vectorizer, stop_words)
+                        
+                        # Create and display the colored card for the tweet
                         card_html = create_card(tweet_text, sentiment)
                         st.markdown(card_html, unsafe_allow_html=True)
                 else:
