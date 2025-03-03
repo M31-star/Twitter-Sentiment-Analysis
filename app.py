@@ -6,86 +6,58 @@ from nltk.corpus import stopwords
 import nltk
 from ntscraper import Nitter
 
-# Download stopwords once, using Streamlit's caching
+# Download stopwords once
 @st.cache_resource
 def load_stopwords():
     nltk.download('stopwords')
     return stopwords.words('english')
 
-# Load model and vectorizer once
+# Load model and vectorizer
 @st.cache_resource
 def load_model_and_vectorizer():
-    try:
-        with open('model.pkl', 'rb') as model_file:
-            model = pickle.load(model_file)
-        with open('vectorizer.pkl', 'rb') as vectorizer_file:
-            vectorizer = pickle.load(vectorizer_file)
-        return model, vectorizer
-    except Exception as e:
-        st.error(f"Error loading model/vectorizer: {e}")
-        return None, None
+    with open('model.pkl', 'rb') as model_file:
+        model = pickle.load(model_file)
+    with open('vectorizer.pkl', 'rb') as vectorizer_file:
+        vectorizer = pickle.load(vectorizer_file)
+    return model, vectorizer
 
 # Define sentiment prediction function
 def predict_sentiment(text, model, vectorizer, stop_words):
-    if not model or not vectorizer:
-        return "Error: Model or vectorizer not loaded."
-    
-    # Preprocess text
     text = re.sub('[^a-zA-Z]', ' ', text)
     text = text.lower().split()
     text = [word for word in text if word not in stop_words]
-    text = ' '.join(text)
-    text = vectorizer.transform([text])
-
-    # Predict sentiment
+    text = [' '.join(text)]
+    text = vectorizer.transform(text)
     sentiment = model.predict(text)
     return "Negative" if sentiment == 0 else "Positive"
 
-# Function to initialize the Nitter scraper with error handling
+# Initialize Nitter scraper with lightbrd.com
 @st.cache_resource
 def initialize_scraper():
-    instances = [
-        "https://nitter.privacydev.net",
-        "https://nitter.fdn.fr",
-        "https://lightbrd.com/"
-        "https://nitter.kavin.rocks"
-    ]
-    
-    for instance in instances:
-        try:
-            scraper = Nitter(instance=instance, log_level=1)
-            return scraper
-        except Exception as e:
-            st.warning(f"Failed to connect to {instance}. Trying another instance...")
-    
-    st.error("All Nitter instances are unreachable. Please try again later.")
-    return None
+    try:
+        return Nitter(instance="https://lightbrd.com", log_level=1)
+    except Exception as e:
+        st.error(f"Error initializing scraper: {e}")
+        return None
 
-# Function to create a colored card for tweets
+# Function to create a colored card
 def create_card(tweet_text, sentiment):
     color = "green" if sentiment == "Positive" else "red"
-    return f"""
+    card_html = f"""
     <div style="background-color: {color}; padding: 10px; border-radius: 5px; margin: 10px 0;">
         <h5 style="color: white;">{sentiment} Sentiment</h5>
         <p style="color: white;">{tweet_text}</p>
     </div>
     """
+    return card_html
 
 # Main app logic
 def main():
     st.title("Twitter Sentiment Analysis")
-
-    # Load required resources
     stop_words = load_stopwords()
     model, vectorizer = load_model_and_vectorizer()
     scraper = initialize_scraper()
 
-    # Check if resources loaded successfully
-    if not model or not vectorizer:
-        st.error("Failed to load sentiment analysis model. Please check your files.")
-        return
-
-    # User input: either text input or Twitter username
     option = st.selectbox("Choose an option", ["Input text", "Get tweets from user"])
     
     if option == "Input text":
@@ -100,16 +72,16 @@ def main():
             if not scraper:
                 st.error("Scraper is not available. Please try again later.")
                 return
-            
             try:
                 tweets_data = scraper.get_tweets(username, mode='user', number=5)
-                if tweets_data and 'tweets' in tweets_data and tweets_data['tweets']:
+                if 'tweets' in tweets_data:
                     for tweet in tweets_data['tweets']:
-                        tweet_text = tweet.get('text', 'No text available')
+                        tweet_text = tweet['text']
                         sentiment = predict_sentiment(tweet_text, model, vectorizer, stop_words)
-                        st.markdown(create_card(tweet_text, sentiment), unsafe_allow_html=True)
+                        card_html = create_card(tweet_text, sentiment)
+                        st.markdown(card_html, unsafe_allow_html=True)
                 else:
-                    st.warning("No tweets found for this user.")
+                    st.write("No tweets found or an error occurred.")
             except Exception as e:
                 st.error(f"Error fetching tweets: {e}")
 
