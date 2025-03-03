@@ -39,7 +39,7 @@ def predict_sentiment(text, model, vectorizer, stop_words):
 # Initialize Nitter scraper
 @st.cache_resource
 def initialize_scraper():
-    return Nitter(log_level=1)
+    return Nitter(instance="https://nitter.net", log_level=1)  # Set a working instance
 
 # Function to create a colored card
 def create_card(tweet_text, sentiment):
@@ -74,8 +74,8 @@ def main():
         username = st.text_input("Enter Twitter username")
         if st.button("Fetch Tweets"):
             tweets_data = scraper.get_tweets(username, mode='user', number=5)
-            if 'tweets' in tweets_data:  # Check if the 'tweets' key exists
-                for tweet in tweets_data['tweets']:
+            if tweets_data:  # Ensure tweets are retrieved
+                for tweet in tweets_data:
                     tweet_text = tweet['text']  # Access the text of the tweet
                     sentiment = predict_sentiment(tweet_text, model, vectorizer, stop_words)  # Predict sentiment of the tweet text
                     
