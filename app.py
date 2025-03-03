@@ -1,51 +1,70 @@
 import streamlit as st
-import snscrape.modules.twitter as sntwitter
+import pickle
+import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+from nltk.corpus import stopwords
+import nltk
+from ntscraper import Nitter
+import random
 
-def fetch_tweets(username, num_tweets=5):
+# Download stopwords once
+@st.cache_resource
+def load_stopwords():
+    nltk.download('stopwords')
+    return stopwords.words('english')
+
+# Load model and vectorizer
+@st.cache_resource
+def load_model_and_vectorizer():
+    with open('model.pkl', 'rb') as model_file:
+        model = pickle.load(model_file)
+    with open('vectorizer.pkl', 'rb') as vectorizer_file:
+        vectorizer = pickle.load(vectorizer_file)
+    return model, vectorizer
+
+# Initialize Nitter scraper with fallback
+@st.cache_resource
+def initialize_scraper():
     try:
-        tweets = []
-        scraper = sntwitter.TwitterUserScraper(username)
-
-        # Debugging: Show scraper initialized message
-        st.write(f"Scraper initialized for user: {username}")
-
-        # Fetch tweets and store them in a list
-        for i, tweet in enumerate(scraper.get_items()):
-            if i >= num_tweets:
-                break
-            tweets.append(tweet.content)
-
-        # Debugging: Show raw tweets data
-        st.write(f"🔹 Raw Tweets Data: {tweets}")
-
-        if not tweets:
-            st.error(f"⚠️ No tweets found for {username}. The scraper might be blocked or the account is private.")
-            return None
-        
-        return tweets
-    
+        return Nitter()  # No 'instance' argument, uses default
     except Exception as e:
-        st.error(f"❌ Error fetching tweets: {e}")
+        st.error(f"Error initializing scraper: {e}")
         return None
 
+# Fetch tweets safely
+def fetch_tweets(scraper, username, num_tweets=5):
+    try:
+        tweets_data = scraper.get_tweets(username, mode='user', number=num_tweets)
+        if not tweets_data or 'tweets' not in tweets_data or not tweets_data['tweets']:
+            return None  # Return None if no tweets found
+        return tweets_data['tweets']
+    except Exception as e:
+        st.error(f"Error fetching tweets: {e}")
+        return None
+
+# Sentiment prediction
+def predict_sentiment(text, model, vectorizer, stop_words):
+    text = re.sub('[^a-zA-Z]', ' ', text).lower().split()
+    text = [word for word in text if word not in stop_words]
+    text = ' '.join(text)
+    text_vectorized = vectorizer.transform([text])
+    sentiment = model.predict(text_vectorized)
+    return "Negative" if sentiment == 0 else "Positive"
+
+# Create sentiment card
+def create_card(tweet_text, sentiment):
+    color = "green" if sentiment == "Positive" else "red"
+    return f"""
+    <div style="background-color: {color}; padding: 10px; border-radius: 5px; margin: 10px 0;">
+        <h5 style="color: white;">{sentiment} Sentiment</h5>
+        <p style="color: white;">{tweet_text}</p>
+    </div>
+    """
+
+# Main app
 def main():
     st.title("Twitter Sentiment Analysis")
 
-    # Option to input text or fetch tweets
-    option = st.selectbox("Choose an option", ["Input text", "Get tweets from user"])
-    
-    if option == "Input text":
-        text_input = st.text_area("Enter text to analyze sentiment")
-        if st.button("Analyze"):
-            st.write(f"Sentiment: [Logic Needed]")  # Replace with actual model
-
-    elif option == "Get tweets from user":
-        username = st.text_input("Enter Twitter username")
-        if st.button("Fetch Tweets"):
-            tweets = fetch_tweets(username, num_tweets=5)
-            if tweets:
-                for tweet in tweets:
-                    st.write(f"📢 {tweet}")  # Display tweets as raw text
-
-if __name__ == "__main__":
-    main()
+    stop_words = load_stopwords()
+    model, vectorizer = load_model_and_vectorizer()
+    scraper = initialize_scr
